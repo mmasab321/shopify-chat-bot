@@ -200,6 +200,28 @@ def api_connected_shops():
     return {"shops": shops}
 
 
+@app.get("/api/store_status")
+def api_store_status():
+    """Debug: show if we can reach Shopify (shop info + product count). Use to verify token has read_products."""
+    shops = shopify_auth.get_stored_shops()
+    if not shops:
+        return {"connected": False, "message": "No store connected."}
+    shop = next(iter(shops))
+    token = shops[shop]
+    shop_info = shopify_api.get_shop_info(shop, token)
+    products = shopify_api.get_products(shop, token, limit=5)
+    return {
+        "connected": True,
+        "shop": shop,
+        "shop_info_ok": shop_info is not None,
+        "shop_name": shop_info.get("name") if shop_info else None,
+        "products_count": len(products),
+        "message": "Token has read_products; chat can use store data."
+        if products
+        else "No products returned. Reconnect the store and accept the new scopes, or check Render logs for API errors.",
+    }
+
+
 class DisconnectRequest(BaseModel):
     shop: str
 

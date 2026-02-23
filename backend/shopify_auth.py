@@ -14,7 +14,8 @@ import httpx
 
 _project_root = Path(__file__).resolve().parent.parent
 STORES_FILE = _project_root / "data" / "stores.json"
-SCOPES = "read_orders,read_products"
+# Customer service bot: orders, products, customers, inventory (stock), locations (for inventory)
+SCOPES = "read_orders,read_products,read_customers,read_inventory,read_locations"
 
 # In-memory: state (nonce) -> shop domain (for callback verification)
 _oauth_states: dict[str, str] = {}

@@ -33,6 +33,23 @@ def get_products(shop: str, token: str, limit: int = 25) -> list[dict]:
         return []
 
 
+def get_inventory_available(shop: str, token: str, inventory_item_id: int) -> int | None:
+    """GET inventory_levels for one item. Returns total available across locations or None."""
+    url = f"{BASE.format(shop=shop, version=API_VERSION)}/inventory_levels.json"
+    try:
+        r = httpx.get(
+            url,
+            headers=_headers(token),
+            params={"inventory_item_ids": inventory_item_id},
+            timeout=10,
+        )
+        r.raise_for_status()
+        levels = r.json().get("inventory_levels", [])
+        return sum(int(l.get("available", 0) or 0) for l in levels)
+    except Exception:
+        return None
+
+
 def get_order_by_number_and_email(shop: str, token: str, order_number: str, email: str) -> dict | None:
     """Find an order by order number and customer email. Returns order dict or None."""
     # Shopify order_number is integer; name is like "#1001". Search by status=any and filter.
@@ -79,8 +96,14 @@ def build_store_context(shop: str, token: str, include_products: bool = True) ->
                 variants = p.get("variants", [])
                 prices = [v.get("price") for v in variants if v.get("price")]
                 price_str = f" ${prices[0]}" if prices else ""
-                lines.append(f"- {title}{price_str}")
-            parts.append("Products (name and price): " + "; ".join(lines))
+                stock_str = ""
+                inv_item_id = variants[0].get("inventory_item_id") if variants else None
+                if inv_item_id:
+                    available = get_inventory_available(shop, token, inv_item_id)
+                    if available is not None:
+                        stock_str = f", {available} in stock"
+                lines.append(f"- {title}{price_str}{stock_str}")
+            parts.append("Products (name, price, stock): " + "; ".join(lines))
     return " ".join(parts) if parts else ""
 
 
