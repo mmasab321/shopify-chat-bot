@@ -200,6 +200,19 @@ def api_connected_shops():
     return {"shops": shops}
 
 
+class DisconnectRequest(BaseModel):
+    shop: str
+
+
+@app.post("/api/disconnect")
+def api_disconnect(req: DisconnectRequest):
+    """Remove a store from connected shops (disconnect)."""
+    normalized = shopify_auth.normalize_shop(req.shop)
+    if not shopify_auth.remove_shop(normalized):
+        raise HTTPException(status_code=404, detail="Store not found or not connected.")
+    return {"ok": True, "shop": normalized}
+
+
 # Show exact redirect URI and sample authorize URL for debugging
 @app.get("/api/shopify_redirect_uri")
 def shopify_redirect_uri():

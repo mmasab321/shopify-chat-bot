@@ -41,6 +41,17 @@ def save_token(shop: str, access_token: str) -> None:
     STORES_FILE.write_text(json.dumps(data, indent=2))
 
 
+def remove_shop(shop: str) -> bool:
+    """Remove a shop from stored tokens. Returns True if it was present and removed."""
+    data = get_stored_shops()
+    key = normalize_shop(shop)
+    if key not in data:
+        return False
+    del data[key]
+    STORES_FILE.write_text(json.dumps(data, indent=2))
+    return True
+
+
 def get_token(shop: str) -> str | None:
     """Return stored access token for shop, or None."""
     return get_stored_shops().get(normalize_shop(shop))

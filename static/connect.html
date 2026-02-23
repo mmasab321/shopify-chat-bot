@@ -55,6 +55,24 @@
     .back { margin-top: 20px; }
     .back a { color: #1a73e8; text-decoration: none; }
     .back a:hover { text-decoration: underline; }
+    #connected-list { margin-bottom: 20px; }
+    .connected-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 14px;
+      background: #f0f7f0;
+      border: 1px solid #c8e6c9;
+      border-radius: 8px;
+      margin-bottom: 8px;
+    }
+    .connected-item span { font-size: 14px; color: #333; }
+    button.disconnect {
+      background: #c62828;
+      font-size: 13px;
+      padding: 6px 12px;
+    }
+    button.disconnect:hover { background: #b71c1c; }
   </style>
 </head>
 <body>
@@ -63,6 +81,10 @@
     <p style="font-size:13px;color:#666;margin-bottom:16px;">If you get &quot;redirect_uri and application url must have matching hosts&quot;, use a tunnel (see <strong>TUNNEL_SETUP.md</strong>): run <code>ngrok http 8000</code> in Terminal, set <code>SHOPIFY_APP_URL</code> and Shopify App URL to the ngrok HTTPS URL, then open this page via the ngrok URL.</p>
     <div id="success-msg" class="success" style="display: none;">
       Your store is connected. You can use the chat to look up orders (order number + email).
+    </div>
+    <div id="connected-list" style="display: none;">
+      <p style="font-weight:500;margin-bottom:8px;">Connected store(s)</p>
+      <div id="connected-items"></div>
     </div>
     <form action="/auth/shopify" method="get">
       <label for="shop">Store URL</label>
@@ -73,9 +95,41 @@
     <p style="margin-top:24px;font-size:12px;color:#666;"><strong>OAuth still failing?</strong> In your app’s <strong>Versions</strong> page: set <strong>App URL</strong> and <strong>Redirect URLs</strong> to the exact values from <a href="/api/shopify_redirect_uri" target="_blank">/api/shopify_redirect_uri</a>. Use <code id="redirect-uri">redirect_uri</code> for Redirect URLs and open this page at the same host as <code>app_url</code> (e.g. http://127.0.0.1:8000/connect) — no trailing slash. Save the version. Copy from <a href="/api/shopify_redirect_uri" target="_blank">this link</a> if needed.</p>
   </div>
   <script>
+    function showConnected(shops) {
+      var listEl = document.getElementById('connected-list');
+      var itemsEl = document.getElementById('connected-items');
+      var successEl = document.getElementById('success-msg');
+      if (!shops || shops.length === 0) {
+        listEl.style.display = 'none';
+        if (!document.location.search.includes('connected=1')) successEl.style.display = 'none';
+        return;
+      }
+      listEl.style.display = 'block';
+      successEl.style.display = 'block';
+      itemsEl.innerHTML = shops.map(function(shop) {
+        return '<div class="connected-item"><span>' + escapeHtml(shop) + '</span><button type="button" class="disconnect" data-shop="' + escapeHtml(shop) + '">Disconnect</button></div>';
+      }).join('');
+      itemsEl.querySelectorAll('button.disconnect').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+          var shop = btn.getAttribute('data-shop');
+          fetch('/api/disconnect', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ shop: shop }) })
+            .then(function(r) { return r.ok ? r.json() : Promise.reject(); })
+            .then(function() { return fetch('/api/connected_shops'); })
+            .then(function(r) { return r.json(); })
+            .then(function(d) { showConnected(d.shops); })
+            .catch(function() { alert('Could not disconnect.'); });
+        });
+      });
+    }
+    function escapeHtml(s) {
+      var div = document.createElement('div');
+      div.textContent = s;
+      return div.innerHTML;
+    }
     if (document.location.search.includes('connected=1')) {
       document.getElementById('success-msg').style.display = 'block';
     }
+    fetch('/api/connected_shops').then(function(r) { return r.json(); }).then(function(d) { showConnected(d.shops); }).catch(function() {});
     fetch('/api/shopify_redirect_uri').then(r => r.json()).then(d => {
       var el = document.getElementById('redirect-uri');
       if (el) el.textContent = d.redirect_uri || el.textContent;
