@@ -8,13 +8,13 @@ import json
 import secrets
 import re
 from pathlib import Path
-from urllib.parse import urlencode
+from urllib.parse import parse_qsl, urlencode
 
 import httpx
 
 _project_root = Path(__file__).resolve().parent.parent
 STORES_FILE = _project_root / "data" / "stores.json"
-SCOPES = "read_orders"
+SCOPES = "read_orders,read_products"
 
 # In-memory: state (nonce) -> shop domain (for callback verification)
 _oauth_states: dict[str, str] = {}
@@ -69,6 +69,25 @@ def verify_hmac(query_params: dict, secret: str) -> bool:
     message = "&".join(f"{k}={v}" for k, v in sorted(rest.items()))
     expected = hmac.new(secret.encode(), message.encode(), hashlib.sha256).hexdigest()
     return hmac.compare_digest(expected, received)
+
+
+def verify_hmac_raw_query(raw_query: str, secret: str) -> bool:
+    """Verify using raw query string (avoids proxy/framework altering params)."""
+    if not raw_query:
+        return False
+    pairs = parse_qsl(raw_query, keep_blank_values=True)
+    received_hmac = None
+    rest = []
+    for k, v in pairs:
+        if k == "hmac":
+            received_hmac = v
+        else:
+            rest.append((k, v))
+    if received_hmac is None:
+        return False
+    message = "&".join(f"{k}={v}" for k, v in sorted(rest))
+    expected = hmac.new(secret.encode(), message.encode(), hashlib.sha256).hexdigest()
+    return hmac.compare_digest(expected, received_hmac)
 
 
 def build_authorize_url(shop: str, client_id: str, redirect_uri: str) -> tuple[str, str]:

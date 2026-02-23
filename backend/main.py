@@ -21,7 +21,8 @@ from fastapi.responses import FileResponse, RedirectResponse
 from pydantic import BaseModel
 from openai import OpenAI
 
-from backend import shopify_auth
+import re
+from backend import shopify_auth, shopify_api
 from backend.shopify_config import (
     SHOPIFY_CLIENT_ID,
     SHOPIFY_CLIENT_SECRET,
@@ -70,17 +71,27 @@ class ChatResponse(BaseModel):
     reply: str
 
 
-def get_deepseek_reply(message: str, history: list[dict] | None = None) -> str:
+def get_deepseek_reply(
+    message: str,
+    history: list[dict] | None = None,
+    store_context: str | None = None,
+    order_context: str | None = None,
+) -> str:
     if not DEEPSEEK_API_KEY:
         raise ValueError("DEEPSEEK_API_KEY not set in .env")
 
     client = OpenAI(api_key=DEEPSEEK_API_KEY, base_url=DEEPSEEK_BASE_URL)
     system = (
         "You are a friendly customer service assistant for an ecommerce store. "
-        "Answer helpfully and concisely. If the user asks about orders, refunds, or shipping, "
-        "say you'll need to look up their order (they can share order number and email when we connect the store). "
-        "For now, keep the tone warm and professional."
+        "Answer helpfully and concisely using ONLY the store data provided below. "
+        "Do not invent product names, prices, or order details."
     )
+    if store_context:
+        system += f"\n\n[Current store data]\n{store_context}"
+    if order_context:
+        system += f"\n\n[Order lookup result]\n{order_context}"
+    if not store_context and not order_context:
+        system += " No store data is available yet; suggest they connect their store or ask for order number and email to look up an order."
     messages = [{"role": "system", "content": system}]
     if history:
         for h in history[-20:]:  # last 20 turns
@@ -101,11 +112,35 @@ def health():
     return {"ok": True, "app": "shopify-chat-bot"}
 
 
+def _parse_order_lookup(message: str) -> tuple[str | None, str | None]:
+    """Try to extract order number and email from message. Returns (order_number, email) or (None, None)."""
+    # Simple patterns: "order #1234" / "order 1234", email-like substring
+    email_re = r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+"
+    order_re = r"(?:order\s*#?\s*|#)(\d+)"
+    email_match = re.search(email_re, message)
+    order_match = re.search(order_re, message, re.I)
+    email = email_match.group(0).strip() if email_match else None
+    order_num = order_match.group(1).strip() if order_match else None
+    return (order_num, email)
+
+
 @app.post("/api/chat", response_model=ChatResponse)
 def chat(req: ChatRequest):
     try:
         history = [{"role": m.role, "content": m.content} for m in (req.history or [])]
-        reply = get_deepseek_reply(req.message, history)
+        store_context = None
+        order_context = None
+        shops = shopify_auth.get_stored_shops()
+        if shops:
+            shop = next(iter(shops))
+            token = shops[shop]
+            store_context = shopify_api.build_store_context(shop, token)
+            order_num, email = _parse_order_lookup(req.message)
+            if order_num or email:
+                order_context = shopify_api.build_order_context(shop, token, order_num or "", email or "")
+                if not order_context:
+                    order_context = "No order found for that order number and email."
+        reply = get_deepseek_reply(req.message, history, store_context=store_context, order_context=order_context or None)
         return ChatResponse(reply=reply)
     except ValueError as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -138,7 +173,9 @@ def auth_shopify_callback(request: Request):
     if not SHOPIFY_CLIENT_ID or not SHOPIFY_CLIENT_SECRET:
         raise HTTPException(status_code=503, detail="Shopify app not configured.")
     params = dict(request.query_params)
-    if not shopify_auth.verify_hmac(dict(params), SHOPIFY_CLIENT_SECRET):
+    raw_query = request.scope.get("query_string", b"").decode("utf-8")
+    ok = shopify_auth.verify_hmac_raw_query(raw_query, SHOPIFY_CLIENT_SECRET) or shopify_auth.verify_hmac(params, SHOPIFY_CLIENT_SECRET)
+    if not ok:
         raise HTTPException(status_code=400, detail="Invalid HMAC")
     state = params.get("state")
     shop = shopify_auth._oauth_states.pop(state, None)
