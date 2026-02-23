@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Connect your Shopify store</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #f5f5f5;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .card {
+      background: #fff;
+      padding: 32px;
+      border-radius: 12px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+      max-width: 420px;
+      width: 100%;
+    }
+    h1 { margin-top: 0; font-size: 22px; }
+    .success {
+      background: #e6f4ea;
+      color: #137333;
+      padding: 12px 16px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+    }
+    label { display: block; margin-bottom: 8px; font-weight: 500; color: #333; }
+    input[type="text"] {
+      width: 100%;
+      padding: 10px 14px;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      font-size: 14px;
+      margin-bottom: 16px;
+    }
+    button {
+      padding: 10px 20px;
+      background: #111;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-weight: 500;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    button:hover { background: #333; }
+    .back { margin-top: 20px; }
+    .back a { color: #1a73e8; text-decoration: none; }
+    .back a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Connect your Shopify store</h1>
+    <p style="font-size:13px;color:#666;margin-bottom:16px;">If you get &quot;redirect_uri and application url must have matching hosts&quot;, use a tunnel (see <strong>TUNNEL_SETUP.md</strong>): run <code>ngrok http 8000</code> in Terminal, set <code>SHOPIFY_APP_URL</code> and Shopify App URL to the ngrok HTTPS URL, then open this page via the ngrok URL.</p>
+    <div id="success-msg" class="success" style="display: none;">
+      Your store is connected. You can use the chat to look up orders (order number + email).
+    </div>
+    <form action="/auth/shopify" method="get">
+      <label for="shop">Store URL</label>
+      <input type="text" id="shop" name="shop" placeholder="mystore.myshopify.com" required>
+      <button type="submit">Connect with Shopify</button>
+    </form>
+    <p class="back"><a href="/">Back to chat</a></p>
+    <p style="margin-top:24px;font-size:12px;color:#666;"><strong>OAuth still failing?</strong> In your app’s <strong>Versions</strong> page: set <strong>App URL</strong> and <strong>Redirect URLs</strong> to the exact values from <a href="/api/shopify_redirect_uri" target="_blank">/api/shopify_redirect_uri</a>. Use <code id="redirect-uri">redirect_uri</code> for Redirect URLs and open this page at the same host as <code>app_url</code> (e.g. http://127.0.0.1:8000/connect) — no trailing slash. Save the version. Copy from <a href="/api/shopify_redirect_uri" target="_blank">this link</a> if needed.</p>
+  </div>
+  <script>
+    if (document.location.search.includes('connected=1')) {
+      document.getElementById('success-msg').style.display = 'block';
+    }
+    fetch('/api/shopify_redirect_uri').then(r => r.json()).then(d => {
+      var el = document.getElementById('redirect-uri');
+      if (el) el.textContent = d.redirect_uri || el.textContent;
+    }).catch(function() {});
+  </script>
+</body>
+</html>
